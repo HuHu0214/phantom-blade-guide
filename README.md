@@ -70,18 +70,18 @@ node dist-server/server.js
 - 攻略数据与第三方游戏素材：各自权利归原方
 - `public/map/` 与 `data/progress.json`、`data/npsso.enc` 不进入 Git 仓库
 
-## 上传到 GitHub 前
+## 仓库内容
 
-`.gitignore` 已排除：
+本公开仓库只包含代码与整理后的中文攻略数据（`data/guide.json`），不包含：
 
+- `data/npsso.enc`（授权码）
+- `data/progress.json`（奖杯进度与勾选）
+- `public/map/`（约 110 MB 地图/截图素材，运行 `scripts/fetch-map-assets.ps1` 获取）
+- `research/`、`tools/`（本地抓取与测试脚本）
+- `data/guide.en.json`（英文备份）
 - `node_modules/`、`dist/`、`dist-server/`
-- `data/npsso.enc`（授权码，绝不能上传）
-- `data/progress.json`（你的奖杯进度与勾选）
-- `public/map/`（约 110 MB 地图/截图素材）
-- `research/raw/`、`research/text/`、`research/build/`
-- `data/guide.en.json`
 
-公开仓库前请确认第三方攻略数据与游戏素材的使用范围；更稳妥的做法是使用私有仓库。
+`.gitignore` 会继续保护这些路径。第三方攻略数据与游戏素材的使用范围请自行确认，署名见 `NOTICE.md`。
 
 ## 目录
 
