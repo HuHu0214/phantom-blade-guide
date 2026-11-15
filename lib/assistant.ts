@@ -4,6 +4,7 @@ import { createDeepSeek } from "@ai-sdk/deepseek";
 import { generateText, streamText } from "ai";
 import type {
   AssistantAction,
+  AssistantGuideTarget,
   AssistantMessage,
   AssistantNextResponse,
   AssistantStatus,
@@ -500,6 +501,93 @@ function buildContext(
   return lines.join("\n").slice(0, 14000);
 }
 
+function regionForItem(guide: Guide, id: string): Region | undefined {
+  return guide.regions.find((region) =>
+    region.items.some((item) => item.id === id)
+  );
+}
+
+function regionForHidden(guide: Guide, id: string): Region | undefined {
+  return guide.regions.find((region) =>
+    (region.hidden || []).some((item) => item.id === id)
+  );
+}
+
+function targetForMissable(
+  guide: Guide,
+  progress: Progress,
+  rule: Missable,
+  fallback: Region,
+  earned: Set<string>
+): AssistantGuideTarget {
+  if (rule.id === "true_ending_quests") {
+    const missing = guide.trueEnding.quests.find(
+      (quest) => !trueEndingDone(guide, progress, quest, earned)
+    );
+    return {
+      regionId: fallback.id,
+      section: "ending",
+      id: missing?.id,
+      kind: "ending",
+    };
+  }
+  if (rule.entry) {
+    const found = regionForItem(guide, rule.entry);
+    if (found) {
+      return {
+        regionId: found.id,
+        section: "collect",
+        id: rule.entry,
+        kind: "item",
+      };
+    }
+  }
+  if (rule.hidden) {
+    const found = regionForHidden(guide, rule.hidden);
+    if (found) {
+      return {
+        regionId: found.id,
+        section: "collect",
+        id: rule.hidden,
+        kind: "hidden",
+      };
+    }
+  }
+  if (rule.quest) {
+    const tale = guide.tales.find((item) => norm(item.name) === norm(rule.quest));
+    if (tale) {
+      return {
+        regionId:
+          tale.region !== "multiple" && guide.regions.some((r) => r.id === tale.region)
+            ? tale.region
+            : fallback.id,
+        section: "tales",
+        id: tale.id,
+        kind: "tale",
+      };
+    }
+  }
+  if (rule.trophy) {
+    const boss = guide.bosses.find((item) => item.trophy === rule.trophy);
+    if (boss) {
+      return {
+        regionId: boss.region,
+        section: "bosses",
+        id: boss.id,
+        kind: "boss",
+      };
+    }
+  }
+  return {
+    regionId:
+      rule.region !== "multiple" &&
+      guide.regions.some((item) => item.id === rule.region)
+        ? rule.region
+        : fallback.id,
+    section: "collect",
+  };
+}
+
 function computeActions(
   guide: Guide,
   progress: Progress
@@ -519,6 +607,7 @@ function computeActions(
       reason: zhText(rule.consequence),
       where: rule.region === "multiple" ? "多区域" : regionById(guide, rule.region).cn,
       deadline: guide.deadlines?.[rule.deadline]?.cn,
+      target: targetForMissable(guide, progress, rule, region, earned),
     });
   }
 
@@ -536,6 +625,7 @@ function computeActions(
       reason: zhText(rule.how),
       where: region.cn,
       deadline: guide.deadlines?.[rule.deadline]?.cn,
+      target: targetForMissable(guide, progress, rule, region, earned),
     });
   }
 
@@ -547,16 +637,31 @@ function computeActions(
         boss.trophy ? `；奖杯：${trophyById(guide, boss.trophy)?.name || ""}` : ""
       }`,
       where: region.cn,
+      target: {
+        regionId: boss.region,
+        section: "bosses",
+        id: boss.id,
+        kind: "boss",
+      },
     });
   }
 
   const ending = endingStats(guide, progress, earned);
+  const missingEnding = guide.trueEnding.quests.filter(
+    (quest) => !trueEndingDone(guide, progress, quest, earned)
+  );
   if (ending.done < ending.total) {
     actions.push({
       level: "warn",
       title: `真结局还差 ${ending.total - ending.done} 项`,
       reason: guide.trueEnding.cutoff,
       where: "攻略 · 真结局",
+      target: {
+        regionId: region.id,
+        section: "ending",
+        id: missingEnding[0]?.id,
+        kind: "ending",
+      },
     });
   }
 
@@ -577,6 +682,21 @@ function computeActions(
         ...pending.slice(0, 4).map((item) => item.name),
       ].join("、"),
       where: region.cn,
+      target: hidden[0]
+        ? {
+            regionId: region.id,
+            section: "collect",
+            id: hidden[0].id,
+            kind: "hidden",
+          }
+        : pending[0]
+          ? {
+              regionId: region.id,
+              section: "collect",
+              id: pending[0].id,
+              kind: "item",
+            }
+          : undefined,
     });
   }
 
@@ -586,6 +706,10 @@ function computeActions(
       title: "当前没有紧急事项",
       reason: "主线已通关，可以回头清收集或准备白金收尾。",
       where: region.cn,
+      target: {
+        regionId: region.id,
+        section: "collect",
+      },
     });
   }
   return actions.slice(0, 5);
@@ -612,6 +736,7 @@ export async function* streamAssistantChat(input: {
     context,
   ].join("\n\n");
 
+  const reasoning = input.model === "deepseek-reasoner";
   const result = streamText({
     model: createModel(input.apiKey, input.model),
     instructions,
@@ -619,8 +744,8 @@ export async function* streamAssistantChat(input: {
       role: message.role,
       content: message.content,
     })) as any,
-    temperature: 0.4,
-    maxOutputTokens: 900,
+    ...(reasoning ? {} : { temperature: 0.4 }),
+    maxOutputTokens: reasoning ? 2000 : 900,
     abortSignal: input.abortSignal,
   });
 
@@ -650,6 +775,7 @@ export async function generateAssistantNext(input: {
   }
   try {
     const config = loadConfig();
+    const reasoning = config.model === "deepseek-reasoner";
     const { text } = await generateText({
       model: createModel(apiKey, config.model),
       instructions:
@@ -660,8 +786,8 @@ export async function generateAssistantNext(input: {
             `${index + 1}. ${action.title}｜${action.reason}｜${action.where || ""}｜${action.deadline || ""}`
         )
         .join("\n")}`,
-      temperature: 0.3,
-      maxOutputTokens: 260,
+      ...(reasoning ? {} : { temperature: 0.3 }),
+      maxOutputTokens: reasoning ? 1200 : 260,
       abortSignal: timeout(20000),
     });
     return {
@@ -683,7 +809,7 @@ export async function testAssistant(): Promise<string> {
       model: createModel(apiKey, config.model),
       instructions: "你是连接测试。",
       prompt: "请只回复：连接成功",
-      maxOutputTokens: 20,
+      maxOutputTokens: config.model === "deepseek-reasoner" ? 200 : 20,
       abortSignal: timeout(20000),
     });
     return text.trim();

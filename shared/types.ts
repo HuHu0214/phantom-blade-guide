@@ -276,12 +276,20 @@ export interface AssistantMessage {
   content: string;
 }
 
+export interface AssistantGuideTarget {
+  regionId: string;
+  section: "bosses" | "tales" | "collect" | "ending";
+  id?: string;
+  kind?: "boss" | "tale" | "item" | "hidden" | "ending";
+}
+
 export interface AssistantAction {
   level: "danger" | "warn" | "info" | "tip";
   title: string;
   reason: string;
   where?: string;
   deadline?: string;
+  target?: AssistantGuideTarget;
 }
 
 export interface AssistantNextResponse {

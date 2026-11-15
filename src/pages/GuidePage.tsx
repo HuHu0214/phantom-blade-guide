@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Boss, Guide, HiddenItem, Item, Progress, Region, Tale } from "../../shared/types";
 import type { GuideSection } from "../ui-types";
 import {
@@ -31,6 +31,7 @@ export function GuidePage({
   onToggle,
   showLightbox,
   onOpenMap,
+  focus,
 }: {
   guide: Guide;
   progress: Progress;
@@ -41,6 +42,7 @@ export function GuidePage({
   onToggle: (kind: ProgressKind, id: string, value: boolean) => void;
   showLightbox: (images: string[], caption: string, index?: number) => void;
   onOpenMap: (regionId: string) => void;
+  focus?: { id: string; kind?: string; nonce: number } | null;
 }) {
   const region = regionById(guide, regionId);
   const progressValue = regionProgress(guide, progress, region);
@@ -48,9 +50,40 @@ export function GuidePage({
     (tale) => tale.region === region.id || tale.region === "multiple"
   );
   const coreItems = region.items.filter((item) => guide.progressTypes.includes(item.type));
+  const pageRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!focus?.id) return;
+    let attempts = 0;
+    let timer = 0;
+    const tryFocus = () => {
+      const root = pageRef.current;
+      if (!root) return false;
+      const element = Array.from(
+        root.querySelectorAll<HTMLElement>("[data-guide-id]")
+      ).find((item) => item.dataset.guideId === focus.id);
+      if (!element) return false;
+      let parent = element.parentElement;
+      while (parent) {
+        if (parent instanceof HTMLDetailsElement) parent.open = true;
+        parent = parent.parentElement;
+      }
+      element.scrollIntoView({ behavior: "smooth", block: "center" });
+      element.classList.add("guide-focus");
+      window.setTimeout(() => element.classList.remove("guide-focus"), 2600);
+      return true;
+    };
+    const tick = () => {
+      if (tryFocus() || attempts >= 16) return;
+      attempts += 1;
+      timer = window.setTimeout(tick, 100);
+    };
+    timer = window.setTimeout(tick, 100);
+    return () => window.clearTimeout(timer);
+  }, [focus?.id, focus?.nonce, regionId, section]);
 
   return (
-    <div className="page guide-page">
+    <div className="page guide-page" ref={pageRef}>
       <nav className="chapter-strip" aria-label="区域">
         {guide.regions.map((item) => (
           <button
@@ -156,6 +189,7 @@ export function GuidePage({
           guide={guide}
           progress={progress}
           region={region}
+          focusId={focus?.id}
           onToggle={onToggle}
           showLightbox={showLightbox}
         />
@@ -220,7 +254,11 @@ function BossRow({
   const tips = (record.tips || []).map(zhText);
 
   return (
-    <article className={`boss-row ${checked ? "done" : ""}`}>
+    <article
+      className={`boss-row ${checked ? "done" : ""}`}
+      data-guide-id={boss.id}
+      data-guide-kind="boss"
+    >
       <input
         type="checkbox"
         checked={checked}
@@ -280,7 +318,12 @@ function TaleList({
         const derived = taleDone(guide, progress, tale) && !progress.tales[tale.id];
         const checked = taleDone(guide, progress, tale);
         return (
-          <article key={tale.id} className={`tale-row ${checked ? "done" : ""}`}>
+          <article
+            key={tale.id}
+            className={`tale-row ${checked ? "done" : ""}`}
+            data-guide-id={tale.id}
+            data-guide-kind="tale"
+          >
             <input
               type="checkbox"
               checked={checked}
@@ -330,12 +373,14 @@ function CollectList({
   guide,
   progress,
   region,
+  focusId,
   onToggle,
   showLightbox,
 }: {
   guide: Guide;
   progress: Progress;
   region: Region;
+  focusId?: string;
   onToggle: (kind: ProgressKind, id: string, value: boolean) => void;
   showLightbox: (images: string[], caption: string, index?: number) => void;
 }) {
@@ -348,6 +393,15 @@ function CollectList({
     const present = new Set(region.items.map((item) => item.type));
     return Array.from(present).sort();
   }, [region.items]);
+
+  useEffect(() => {
+    if (!focusId) return;
+    const item = region.items.find((entry) => entry.id === focusId);
+    if (item) {
+      setTypeFilter("all");
+      setQuery("");
+    }
+  }, [focusId, region.items]);
 
   const filtered = useMemo(() => {
     const target = query.trim().toLowerCase();
@@ -408,6 +462,8 @@ function CollectList({
               <article
                 key={item.id}
                 className={`collect-row hidden-row ${checked ? "done" : ""}`}
+                data-guide-id={item.id}
+                data-guide-kind="hidden"
                 onClick={(event) => {
                   if (!mobile) return;
                   if ((event.target as HTMLElement).closest("input,button")) return;
@@ -462,6 +518,8 @@ function CollectList({
                 <article
                   key={item.id}
                   className={`collect-row ${checked ? "done" : ""}`}
+                  data-guide-id={item.id}
+                  data-guide-kind="item"
                   onClick={(event) => {
                     if (!mobile) return;
                     if ((event.target as HTMLElement).closest("input,button")) return;
@@ -594,7 +652,12 @@ function EndingList({
       {guide.trueEnding.quests.map((quest, index) => {
         const checked = trueEndingDone(guide, progress, quest);
         return (
-          <article key={quest.id} className={`ending-row ${checked ? "done" : ""}`}>
+          <article
+            key={quest.id}
+            className={`ending-row ${checked ? "done" : ""}`}
+            data-guide-id={quest.id}
+            data-guide-kind="ending"
+          >
             <input
               type="checkbox"
               checked={checked}

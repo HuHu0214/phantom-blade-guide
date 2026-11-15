@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type {
+  AssistantGuideTarget,
   AssistantMessage,
   AssistantNextResponse,
   AssistantStatus,
@@ -16,10 +17,12 @@ const SUGGESTIONS = [
 export function AssistantPage({
   status,
   onOpenSettings,
+  onOpenGuide,
   notify,
 }: {
   status: AssistantStatus | null;
   onOpenSettings: () => void;
+  onOpenGuide: (target: AssistantGuideTarget) => void;
   notify: (message: string, tone?: "ok" | "error") => void;
 }) {
   const [next, setNext] = useState<AssistantNextResponse | null>(null);
@@ -185,6 +188,15 @@ export function AssistantPage({
                         {action.where ? <span>{action.where}</span> : null}
                         {action.deadline ? <span>截止：{action.deadline}</span> : null}
                       </div>
+                      {action.target ? (
+                        <button
+                          className="guide-jump"
+                          onClick={() => onOpenGuide(action.target!)}
+                          type="button"
+                        >
+                          查看对应攻略 <span aria-hidden="true">→</span>
+                        </button>
+                      ) : null}
                     </div>
                   </article>
                 ))}

@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import type {
+  AssistantGuideTarget,
   AssistantStatus,
   BootstrapResponse,
   Guide,
@@ -97,6 +98,11 @@ export default function App() {
   const [lightbox, setLightbox] = useState<LightboxState | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [assistantStatus, setAssistantStatus] = useState<AssistantStatus | null>(null);
+  const [guideFocus, setGuideFocus] = useState<{
+    id: string;
+    kind?: string;
+    nonce: number;
+  } | null>(null);
   const toastTimer = useRef<number | null>(null);
 
   function notify(message: string, tone: "ok" | "error" = "ok") {
@@ -174,6 +180,7 @@ export default function App() {
     const applyLocation = () => {
       const parsed = parseHash(window.location.hash);
       if (!parsed) return;
+      setGuideFocus(null);
       if (parsed.tab) setTab(parsed.tab);
       if (parsed.regionId) setRegionId(parsed.regionId);
       if (parsed.section) setSection(parsed.section);
@@ -368,27 +375,40 @@ export default function App() {
   }
 
   function goTab(nextTab: Tab) {
+    setGuideFocus(null);
     setTab(nextTab);
     commitLocation(nextTab, regionId, section, mapRegion);
   }
 
   function goRegion(nextRegion: string) {
+    setGuideFocus(null);
     setRegionId(nextRegion);
     commitLocation("guide", nextRegion, section, mapRegion);
   }
 
   function goSection(nextSection: GuideSection) {
+    setGuideFocus(null);
     setSection(nextSection);
     commitLocation("guide", regionId, nextSection, mapRegion);
   }
 
   function goMap(nextMap: string) {
+    setGuideFocus(null);
     setMapRegion(nextMap);
     commitLocation("map", regionId, section, nextMap);
   }
 
-  function openGuide(targetRegionId: string, targetSection: GuideSection = "bosses") {
+  function openGuide(
+    targetRegionId: string,
+    targetSection: GuideSection = "bosses",
+    focusTarget?: AssistantGuideTarget | null
+  ) {
     const target = regionById(guide, targetRegionId);
+    setGuideFocus(
+      focusTarget?.id
+        ? { id: focusTarget.id, kind: focusTarget.kind, nonce: Date.now() }
+        : null
+    );
     setRegionId(target.id);
     setSection(targetSection);
     setTab("guide");
@@ -396,6 +416,7 @@ export default function App() {
   }
 
   function openMap(targetRegionId: string) {
+    setGuideFocus(null);
     const map = guide.mapRegions.find((item) =>
       item.regionIds.includes(targetRegionId)
     );
@@ -440,6 +461,7 @@ export default function App() {
               setLightbox({ images, caption, index })
             }
             onOpenMap={openMap}
+            focus={guideFocus}
           />
         )}
         {tab === "map" && (
@@ -461,6 +483,9 @@ export default function App() {
           <AssistantPage
             status={assistantStatus}
             onOpenSettings={() => goTab("settings")}
+            onOpenGuide={(target) =>
+              openGuide(target.regionId, target.section, target)
+            }
             notify={notify}
           />
         )}
