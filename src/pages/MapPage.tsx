@@ -50,6 +50,7 @@ export function MapPage({
 
   useEffect(() => {
     let cancelled = false;
+    let resizeTimer: number | null = null;
     const container = containerRef.current;
     if (!container) return;
 
@@ -122,7 +123,9 @@ export function MapPage({
           noWrap: true,
         }).addTo(map);
 
-        window.setTimeout(() => map.invalidateSize(), 60);
+        resizeTimer = window.setTimeout(() => {
+          if (!cancelled) map.invalidateSize();
+        }, 60);
 
         for (const landmark of mapData.landmarks || []) {
           const category = catalogs.get(landmark.catalogId) || "";
@@ -170,6 +173,7 @@ export function MapPage({
     load();
     return () => {
       cancelled = true;
+      if (resizeTimer !== null) window.clearTimeout(resizeTimer);
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;
