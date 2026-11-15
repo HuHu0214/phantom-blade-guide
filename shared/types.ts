@@ -264,3 +264,28 @@ export interface MapManifestEntry {
 export interface MapManifest {
   maps: MapManifestEntry[];
 }
+
+export interface AssistantStatus {
+  configured: boolean;
+  provider: string;
+  model: string;
+}
+
+export interface AssistantMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface AssistantAction {
+  level: "danger" | "warn" | "info" | "tip";
+  title: string;
+  reason: string;
+  where?: string;
+  deadline?: string;
+}
+
+export interface AssistantNextResponse {
+  briefing: string;
+  actions: AssistantAction[];
+  source: "llm" | "rules";
+}

@@ -6,13 +6,20 @@ import {
   trophyTotal,
 } from "../helpers";
 
-export type Tab = "overview" | "guide" | "map" | "trophies" | "settings";
+export type Tab =
+  | "overview"
+  | "guide"
+  | "map"
+  | "trophies"
+  | "assistant"
+  | "settings";
 
 const NAV: { id: Tab; label: string; seal: string }[] = [
   { id: "overview", label: "首页", seal: "首" },
   { id: "guide", label: "攻略", seal: "攻" },
   { id: "map", label: "地图", seal: "图" },
   { id: "trophies", label: "奖杯", seal: "杯" },
+  { id: "assistant", label: "助手", seal: "问" },
   { id: "settings", label: "设置", seal: "设" },
 ];
 

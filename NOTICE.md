@@ -27,7 +27,12 @@
 - React / Vite / TypeScript：MIT
 - Leaflet：BSD-2-Clause，许可文本见 `licenses/leaflet.txt`
 - psn-api：MIT
+- Vercel AI SDK / `@ai-sdk/deepseek`：Apache-2.0
+
+## AI 助手与数据
+
+AI 助手是可选功能。启用后，服务端会把当前进度摘要、当前区域和相关攻略片段发送给 DeepSeek API；不会发送 NPSSO、PSN 账号标识、地图截图或完整进度文件。API Key 经 Windows 账户级加密保存在本机 `data/assistant-key.enc`，不进入浏览器或仓库。是否启用、使用哪个模型由使用者自行决定。
 
 ## 使用范围
 
-本项目面向个人、非商业用途。若你 fork 或公开部署，请保留以上署名，并自行确认所用素材在你的司法辖区内的使用范围。不要将 `data/npsso.enc`、`data/progress.json` 或任何 PSN 账号数据上传到公开仓库。
+本项目面向个人、非商业用途。若你 fork 或公开部署，请保留以上署名，并自行确认所用素材在你的司法辖区内的使用范围。不要将 `data/npsso.enc`、`data/progress.json`、`data/assistant-key.enc` 或任何 PSN/API 账号数据上传到公开仓库。

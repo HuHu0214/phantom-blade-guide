@@ -2,9 +2,19 @@ import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import type { Guide, Progress, ProgressKind } from "./shared/types.js";
 import { syncTrophies } from "./lib/psn.js";
+import { deleteSecret, loadSecret, saveSecret } from "./lib/secrets.js";
+import {
+  clearAssistantKey,
+  generateAssistantNext,
+  getAssistantKey,
+  getAssistantStatus,
+  saveAssistantConfig,
+  streamAssistantChat,
+  testAssistant,
+} from "./lib/assistant.js";
 
 const ROOT = process.env.PBZ_ROOT || process.cwd();
 const DATA_DIR = path.join(ROOT, "data");
@@ -67,74 +77,15 @@ function saveProgress(): void {
 }
 
 function saveNpsso(token: string): void {
-  const plain = path.join(DATA_DIR, `.npsso-${process.pid}.plain`);
-  try {
-    fs.writeFileSync(plain, token, "utf8");
-    const result = spawnSync(
-      "powershell.exe",
-      [
-        "-NoProfile",
-        "-NonInteractive",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        DPAPI_SCRIPT,
-        "encrypt",
-        plain,
-        NPSSO_FILE,
-      ],
-      { windowsHide: true, encoding: "utf8" }
-    );
-    if (result.status !== 0) {
-      throw new Error(result.stderr || "Windows DPAPI 加密失败");
-    }
-  } finally {
-    try {
-      fs.unlinkSync(plain);
-    } catch {
-      /* ignore */
-    }
-  }
+  saveSecret(DATA_DIR, DPAPI_SCRIPT, NPSSO_FILE, token);
 }
 
 function loadNpsso(): string | null {
-  if (!fs.existsSync(NPSSO_FILE)) return null;
-  const plain = path.join(DATA_DIR, `.npsso-${process.pid}.plain`);
-  try {
-    const result = spawnSync(
-      "powershell.exe",
-      [
-        "-NoProfile",
-        "-NonInteractive",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        DPAPI_SCRIPT,
-        "decrypt",
-        plain,
-        NPSSO_FILE,
-      ],
-      { windowsHide: true, encoding: "utf8" }
-    );
-    if (result.status !== 0) {
-      throw new Error(result.stderr || "Windows DPAPI 解密失败");
-    }
-    return fs.readFileSync(plain, "utf8").trim();
-  } finally {
-    try {
-      fs.unlinkSync(plain);
-    } catch {
-      /* ignore */
-    }
-  }
+  return loadSecret(DATA_DIR, DPAPI_SCRIPT, NPSSO_FILE);
 }
 
 function clearNpsso(): void {
-  try {
-    fs.unlinkSync(NPSSO_FILE);
-  } catch {
-    /* ignore */
-  }
+  deleteSecret(NPSSO_FILE);
 }
 
 function lanUrls(): string[] {
@@ -347,6 +298,91 @@ async function handleApi(
     return;
   }
 
+  if (req.method === "GET" && route === "/api/assistant/status") {
+    sendJson(res, 200, getAssistantStatus());
+    return;
+  }
+
+  if (req.method === "POST" && route === "/api/assistant/config") {
+    const body = await readBody(req);
+    const status = saveAssistantConfig({
+      apiKey: body.apiKey,
+      model: body.model,
+    });
+    sendJson(res, 200, { ok: true, status });
+    return;
+  }
+
+  if (req.method === "POST" && route === "/api/assistant/clear") {
+    sendJson(res, 200, { ok: true, status: clearAssistantKey() });
+    return;
+  }
+
+  if (req.method === "POST" && route === "/api/assistant/test") {
+    const text = await testAssistant();
+    sendJson(res, 200, { ok: true, text });
+    return;
+  }
+
+  if (req.method === "POST" && route === "/api/assistant/next") {
+    const result = await generateAssistantNext({ guide, progress });
+    sendJson(res, 200, result);
+    return;
+  }
+
+  if (req.method === "POST" && route === "/api/assistant/chat") {
+    const body = await readBody(req);
+    const raw = Array.isArray(body.messages) ? body.messages : [];
+    const messages = raw
+      .filter(
+        (message: any) =>
+          message &&
+          (message.role === "user" || message.role === "assistant") &&
+          typeof message.content === "string"
+      )
+      .slice(-10)
+      .map((message: any) => ({
+        role: message.role,
+        content: String(message.content).slice(0, 4000),
+      }));
+    if (!messages.length || messages[messages.length - 1].role !== "user") {
+      throw new Error("请先输入问题。");
+    }
+    const apiKey = getAssistantKey();
+    if (!apiKey) {
+      throw new Error("AI 助手还没有配置 DeepSeek API Key。请先在设置页保存。");
+    }
+    const config = getAssistantStatus();
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache",
+      "Connection": "keep-alive",
+      "X-Accel-Buffering": "no",
+    });
+    res.flushHeaders();
+    const controller = new AbortController();
+    res.on("close", () => controller.abort());
+    try {
+      const stream = await streamAssistantChat({
+        guide,
+        progress,
+        messages: messages as any,
+        apiKey,
+        model: config.model,
+        abortSignal: controller.signal,
+      });
+      for await (const delta of stream) {
+        res.write(`data: ${JSON.stringify({ delta })}\n\n`);
+      }
+      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "助手请求失败";
+      res.write(`data: ${JSON.stringify({ error: message })}\n\n`);
+    }
+    res.end();
+    return;
+  }
+
   if (req.method === "GET" && route === "/api/health") {
     sendJson(res, 200, { ok: true, uptime: process.uptime() });
     return;
@@ -360,9 +396,10 @@ const server = http.createServer((req, res) => {
   if (url.pathname.startsWith("/api/")) {
     handleApi(req, res, url).catch((error: unknown) => {
       const message = error instanceof Error ? error.message : "服务器错误";
-      const clientError = /授权码|PSN|奖杯|无效|未知|需要确认|格式|还没|没有|找不到|过大/i.test(
-        message
-      );
+      const clientError =
+        /授权码|PSN|奖杯|无效|未知|需要确认|格式|还没|没有|找不到|过大|AI 助手|DeepSeek|API Key|助手/i.test(
+          message
+        );
       sendJson(res, clientError ? 400 : 500, { error: message });
     });
     return;

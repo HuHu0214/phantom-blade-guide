@@ -1,6 +1,6 @@
 # 影境手札 · 影之刃零中文攻略
 
-本地运行的《影之刃零》中文攻略工具：读取港服 PSN 奖杯进度，按当前进度推荐下一场首领、易错过内容、支线与真结局条件。**所有攻略、地图和截图都集成在本项目内，应用界面没有任何外链。**
+本地运行的《影之刃零》中文攻略工具：读取港服 PSN 奖杯进度，按当前进度推荐下一场首领、易错过内容、支线与真结局条件；可选接入 DeepSeek，在「助手」页聊天或一键生成下一步。**所有攻略、地图和截图都集成在本项目内，应用界面没有任何外链。**
 
 ## 启动
 
@@ -26,18 +26,20 @@ powershell -ExecutionPolicy Bypass -File .\scripts\fetch-map-assets.ps1
 - **攻略**：9 个区域，首领（含中文打法要点）、支线（完整步骤）、收集点位（573 个，203 个带本地截图）、真结局 11 项
 - **地图**：8 张本地游戏地图，可缩放、搜索、只看有截图；右侧点位列表联动地图
 - **奖杯**：36 个 PS5 奖杯，中文名称与条件，PSN 自动同步
-- **设置**：PSN 授权、手机地址、进度导出/清空
+- **助手**：基于当前进度和本地攻略库的聊天；一键生成 3-5 条下一步建议（行动、理由、地点、截止点）
+- **设置**：PSN 授权、DeepSeek Key、手机地址、进度导出/清空
 
-移动端采用手机优先布局：底部五个入口、吸顶章回与分段栏、收集/关键道具详情用底部抽屉、地图点位列表用可收起的底部抽屉，支持浏览器返回键与深链；地图代码按需加载。当前是响应式网页，不包含 PWA/离线安装。
+移动端采用手机优先布局：底部六个入口、吸顶章回与分段栏、收集/关键道具详情用底部抽屉、地图点位列表用可收起的底部抽屉，支持浏览器返回键与深链；地图代码按需加载。当前是响应式网页，不包含 PWA/离线安装。
 
 所有界面文案、点位名称、提示、首领打法、支线步骤均为中文；`PSN`、`PS5` 等为平台名称。
 
 ## 技术栈
 
 - 前端：React 19 + Vite + TypeScript
-- 后端：Node.js + TypeScript（`tsc` 编译到 `dist-server`）
+- 后端：Node.js + TypeScript（ESM，`tsc` 编译到 `dist-server`）
 - 地图：Leaflet + 本地瓦片/点位数据
 - PSN：`psn-api`，授权码经系统账户级加密保存在本机
+- LLM：Vercel AI SDK 7 + DeepSeek（服务端调用，Key 不进浏览器）
 
 开发：
 
@@ -62,13 +64,24 @@ node dist-server/server.js
 
 设置页提供「复制官网地址」「复制授权页地址」按钮，不需要手抄链接。
 
+## AI 助手（可选）
+
+在「设置 → AI 助手」保存 DeepSeek API Key，然后在「助手」页：
+
+- **一键下一步**：根据当前进度生成 3-5 条行动建议，带理由、地点和截止点
+- **聊天**：问当前首领、支线、易错过内容、真结局；回答只使用本地攻略库和进度
+- **无 Key 时**：一键下一步仍使用本地规则，聊天不可用
+
+实现方式是 Vercel AI SDK 7 在 Node 服务端调用 DeepSeek；只读，不会执行命令或修改文件。Key 经 Windows 账户级加密保存为 `data/assistant-key.enc`，不会进入浏览器或 Git。聊天时只发送当前进度摘要、当前区域和相关攻略片段，不发送 NPSSO、PSN 账号信息、地图截图或完整进度文件。默认模型 `deepseek-chat`，也可切换 `deepseek-reasoner`。
+
 ## 数据与素材
 
 攻略数据整理自游民星空、keyw007/pbz-guide 与 MapleEve/pbz-map 的公开资料，仅作个人、非商业用途。详细署名与许可范围见 `NOTICE.md`。
 
 - 代码：MIT
 - 攻略数据与第三方游戏素材：各自权利归原方
-- `public/map/` 与 `data/progress.json`、`data/npsso.enc` 不进入 Git 仓库
+- AI SDK 与 DeepSeek provider：Apache-2.0
+- `public/map/` 与 `data/progress.json`、`data/npsso.enc`、`data/assistant-key.enc` 不进入 Git 仓库
 
 ## 仓库内容
 
@@ -76,6 +89,7 @@ node dist-server/server.js
 
 - `data/npsso.enc`（授权码）
 - `data/progress.json`（奖杯进度与勾选）
+- `data/assistant-key.enc`、`data/assistant.json`（DeepSeek Key 与本地模型配置）
 - `public/map/`（约 110 MB 地图/截图素材，运行 `scripts/fetch-map-assets.ps1` 获取）
 - `research/`、`tools/`（本地抓取与测试脚本）
 - `data/guide.en.json`（英文备份）
@@ -88,11 +102,13 @@ node dist-server/server.js
 ```
 index.html                Vite 入口
 src/                      React 前端（TypeScript）
-  pages/                  首页 / 攻略 / 地图 / 奖杯 / 设置
+  pages/                  首页 / 攻略 / 地图 / 奖杯 / 助手 / 设置
   components/             导航、灯箱、缩略图、提示
   helpers.ts              进度、奖杯、易错过等规则
-server.ts                 Node 后端（TypeScript）
+server.ts                 Node 后端（TypeScript，ESM）
 lib/psn.ts                PSN 同步
+lib/assistant.ts          DeepSeek 上下文、聊天、下一步建议
+lib/secrets.ts            DPAPI 加密存储
 shared/types.ts           前后端共享类型
 data/guide.json           中文攻略数据
 public/map/               本地地图素材（gitignored）
@@ -106,3 +122,6 @@ scripts/fetch-map-assets.ps1
 - **手机打不开**：确认同一无线网络、防火墙允许程序访问
 - **奖杯名未匹配**：系统同时按中文名和英文名匹配；仍未匹配的可在奖杯页手动勾选
 - **地图标记名称是笼统的“饰品点位”**：该点位没有匹配到中文名；区域攻略里有对应的中文提示
+- **助手提示未配置**：在「设置 → AI 助手」粘贴 DeepSeek API Key，保存后点「测试连接」
+- **助手认证失败**：检查 Key 是否有效、余额是否充足，或换 `deepseek-chat` 再试
+- **助手回答失败但一键下一步正常**：一键下一步有本地规则兜底；聊天需要可用的 DeepSeek Key

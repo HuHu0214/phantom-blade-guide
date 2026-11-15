@@ -1,6 +1,6 @@
 {
   "name": "phantom-blade-guide",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "影境手札：影之刃零中文攻略、PSN 奖杯同步与本地地图",
   "main": "dist-server/server.js",
   "scripts": {
@@ -14,8 +14,10 @@
   "keywords": [],
   "author": "",
   "license": "MIT",
-  "type": "commonjs",
+  "type": "module",
   "dependencies": {
+    "@ai-sdk/deepseek": "^3.0.87",
+    "ai": "^7.0.173",
     "leaflet": "^1.9.4",
     "psn-api": "^2.18.1",
     "react": "^19.3.1",

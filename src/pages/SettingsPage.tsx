@@ -1,5 +1,5 @@
-import { useState } from "react";
-import type { Guide, Progress } from "../../shared/types";
+import { useEffect, useState } from "react";
+import type { AssistantStatus, Guide, Progress } from "../../shared/types";
 import { formatDate } from "../helpers";
 
 export function SettingsPage({
@@ -8,26 +8,44 @@ export function SettingsPage({
   hasNpsso,
   syncing,
   lanUrls,
+  assistantStatus,
   onSaveNpsso,
   onSync,
   onClearPsn,
   onReset,
+  onSaveAssistant,
+  onTestAssistant,
+  onClearAssistant,
 }: {
   guide: Guide;
   progress: Progress;
   hasNpsso: boolean;
   syncing: boolean;
   lanUrls: string[];
+  assistantStatus: AssistantStatus | null;
   onSaveNpsso: (token: string) => Promise<void>;
   onSync: () => void;
   onClearPsn: () => void;
   onReset: () => void;
+  onSaveAssistant: (input: {
+    apiKey?: string;
+    model?: string;
+  }) => Promise<boolean>;
+  onTestAssistant: () => Promise<void>;
+  onClearAssistant: () => Promise<void>;
 }) {
   const [token, setToken] = useState("");
   const [resetText, setResetText] = useState("");
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState("");
+  const [assistantKey, setAssistantKey] = useState("");
+  const [assistantModel, setAssistantModel] = useState("deepseek-chat");
+  const [savingAssistant, setSavingAssistant] = useState(false);
   const psn = progress.psn;
+
+  useEffect(() => {
+    if (assistantStatus) setAssistantModel(assistantStatus.model);
+  }, [assistantStatus]);
 
   async function copyAddress(url: string, label: string) {
     try {
@@ -54,6 +72,19 @@ export function SettingsPage({
       setToken("");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function saveAssistantSettings() {
+    setSavingAssistant(true);
+    try {
+      const saved = await onSaveAssistant({
+        apiKey: assistantKey.trim() || undefined,
+        model: assistantModel,
+      });
+      if (saved) setAssistantKey("");
+    } finally {
+      setSavingAssistant(false);
     }
   }
 
@@ -201,6 +232,86 @@ export function SettingsPage({
           </p>
         </section>
       </div>
+
+      <section className="paper-block assistant-settings">
+        <div className="block-head">
+          <h2>AI 助手（DeepSeek）</h2>
+          <span className={assistantStatus?.configured ? "mark" : "mark danger"}>
+            {assistantStatus?.configured ? "已配置" : "未配置"}
+          </span>
+        </div>
+        <p className="quiet">
+          「助手」页的聊天和“下一步”总结使用 DeepSeek。Key 只保存在本机，经系统账户级加密；
+          不会写进浏览器或 Git 仓库。
+        </p>
+
+        <div className="assistant-config">
+          <label>
+            <span>模型</span>
+            <select
+              value={assistantModel}
+              onChange={(event) => setAssistantModel(event.target.value)}
+            >
+              <option value="deepseek-chat">deepseek-chat（快，日常推荐）</option>
+              <option value="deepseek-reasoner">deepseek-reasoner（更慢，复杂问题）</option>
+            </select>
+          </label>
+          <label>
+            <span>API Key</span>
+            <input
+              type="password"
+              value={assistantKey}
+              onChange={(event) => setAssistantKey(event.target.value)}
+              placeholder={
+                assistantStatus?.configured
+                  ? "已保存；输入新 Key 可替换"
+                  : "粘贴 DeepSeek API Key"
+              }
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </label>
+          <button
+            className="btn primary"
+            onClick={saveAssistantSettings}
+            disabled={savingAssistant}
+            type="button"
+          >
+            {savingAssistant ? "保存中…" : "保存"}
+          </button>
+        </div>
+
+        <div className="button-row">
+          <button
+            className="btn"
+            onClick={onTestAssistant}
+            disabled={!assistantStatus?.configured}
+            type="button"
+          >
+            测试连接
+          </button>
+          <button
+            className="btn danger"
+            onClick={onClearAssistant}
+            disabled={!assistantStatus?.configured}
+            type="button"
+          >
+            清除 Key
+          </button>
+        </div>
+
+        <div className="status-row">
+          <span className={assistantStatus?.configured ? "dot on" : "dot"} />
+          {assistantStatus?.configured
+            ? `已保存，当前模型：${assistantStatus.model}`
+            : "尚未保存 DeepSeek API Key"}
+        </div>
+
+        <p className="quiet tiny">
+          隐私：聊天时只发送当前进度摘要、当前区域和相关攻略片段；不发送 NPSSO、PSN
+          账号信息、地图截图或完整进度文件。没有 Key 时，“下一步”仍会使用本地规则给出建议。
+        </p>
+      </section>
     </div>
   );
 }

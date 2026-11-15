@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import type {
+  AssistantStatus,
   BootstrapResponse,
   Guide,
   Progress,
@@ -19,13 +20,21 @@ import { OverviewPage } from "./pages/OverviewPage";
 import { GuidePage } from "./pages/GuidePage";
 import { TrophiesPage } from "./pages/TrophiesPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { AssistantPage } from "./pages/AssistantPage";
 import type { GuideSection } from "./ui-types";
 
 const MapPage = lazy(() =>
   import("./pages/MapPage").then((module) => ({ default: module.MapPage }))
 );
 
-const TAB_IDS: Tab[] = ["overview", "guide", "map", "trophies", "settings"];
+const TAB_IDS: Tab[] = [
+  "overview",
+  "guide",
+  "map",
+  "trophies",
+  "assistant",
+  "settings",
+];
 const SECTIONS: GuideSection[] = ["bosses", "tales", "collect", "ending"];
 
 function hashFor(
@@ -87,6 +96,7 @@ export default function App() {
   const [toast, setToast] = useState<ToastState | null>(null);
   const [lightbox, setLightbox] = useState<LightboxState | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [assistantStatus, setAssistantStatus] = useState<AssistantStatus | null>(null);
   const toastTimer = useRef<number | null>(null);
 
   function notify(message: string, tone: "ok" | "error" = "ok") {
@@ -140,6 +150,20 @@ export default function App() {
         if (!cancelled) {
           setError(loadError instanceof Error ? loadError.message : "加载失败");
         }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    api<AssistantStatus>("/api/assistant/status")
+      .then((status) => {
+        if (!cancelled) setAssistantStatus(status);
+      })
+      .catch(() => {
+        /* assistant status is optional */
       });
     return () => {
       cancelled = true;
@@ -284,6 +308,53 @@ export default function App() {
     }
   }
 
+  async function saveAssistant(input: {
+    apiKey?: string;
+    model?: string;
+  }): Promise<boolean> {
+    try {
+      const response = await api<{ status: AssistantStatus }>(
+        "/api/assistant/config",
+        {
+          method: "POST",
+          body: JSON.stringify(input),
+        }
+      );
+      setAssistantStatus(response.status);
+      notify("AI 助手配置已保存", "ok");
+      return true;
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "保存失败", "error");
+      return false;
+    }
+  }
+
+  async function testAssistantConnection(): Promise<void> {
+    try {
+      const response = await api<{ text: string }>("/api/assistant/test", {
+        method: "POST",
+        body: "{}",
+      });
+      notify(`连接成功：${response.text}`, "ok");
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "连接测试失败", "error");
+    }
+  }
+
+  async function clearAssistant(): Promise<void> {
+    if (!window.confirm("确定清除本机保存的 DeepSeek API Key？")) return;
+    try {
+      const response = await api<{ status: AssistantStatus }>(
+        "/api/assistant/clear",
+        { method: "POST", body: "{}" }
+      );
+      setAssistantStatus(response.status);
+      notify("已清除 AI 助手 Key", "ok");
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "清除失败", "error");
+    }
+  }
+
   function commitLocation(
     nextTab: Tab,
     nextRegion: string,
@@ -386,6 +457,13 @@ export default function App() {
         {tab === "trophies" && (
           <TrophiesPage guide={guide} progress={progress} onToggle={toggle} />
         )}
+        {tab === "assistant" && (
+          <AssistantPage
+            status={assistantStatus}
+            onOpenSettings={() => goTab("settings")}
+            notify={notify}
+          />
+        )}
         {tab === "settings" && (
           <SettingsPage
             guide={guide}
@@ -393,10 +471,14 @@ export default function App() {
             hasNpsso={data.server.hasNpsso}
             syncing={syncing}
             lanUrls={data.server.lanUrls}
+            assistantStatus={assistantStatus}
             onSaveNpsso={saveNpsso}
             onSync={sync}
             onClearPsn={clearPsn}
             onReset={reset}
+            onSaveAssistant={saveAssistant}
+            onTestAssistant={testAssistantConnection}
+            onClearAssistant={clearAssistant}
           />
         )}
       </Shell>

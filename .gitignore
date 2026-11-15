@@ -6,6 +6,8 @@ dist-server/
 # sensitive / personal runtime data (NEVER commit)
 data/npsso.enc
 data/progress.json
+data/assistant-key.enc
+data/assistant.json
 
 # third-party game map assets and downloaded raw pages
 public/map/
