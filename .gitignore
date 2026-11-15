@@ -1,0 +1,18 @@
+# dependencies
+node_modules/
+dist/
+dist-server/
+
+# sensitive / personal runtime data (NEVER commit)
+data/npsso.enc
+data/progress.json
+
+# third-party game map assets and downloaded raw pages
+public/map/
+research/
+tools/
+
+# optional English backup / local intermediate
+data/guide.en.json
+*.log
+.tmp/
