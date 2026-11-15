@@ -14,6 +14,73 @@ const SUGGESTIONS = [
   "当前这个首领怎么打？",
 ];
 
+const CHAT_KEY = "pbz.assistant.chat.v1";
+const NEXT_KEY = "pbz.assistant.next.v1";
+const DRAFT_KEY = "pbz.assistant.draft.v1";
+const MAX_MESSAGES = 40;
+
+const WELCOME: AssistantMessage = {
+  role: "assistant",
+  content:
+    "我是影境手札的参谋。可以问“下一步做什么”“本章有哪些易错过”“真结局还差什么”。回答只基于本地攻略库和你的当前进度。",
+};
+
+function loadMessages(): AssistantMessage[] {
+  try {
+    const raw = localStorage.getItem(CHAT_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        const messages = parsed
+          .filter(
+            (message): message is AssistantMessage =>
+              message &&
+              (message.role === "user" || message.role === "assistant") &&
+              typeof message.content === "string"
+          )
+          .slice(-MAX_MESSAGES);
+        while (
+          messages.length &&
+          messages[messages.length - 1].role === "assistant" &&
+          !messages[messages.length - 1].content.trim()
+        ) {
+          messages.pop();
+        }
+        if (messages.length) return messages;
+      }
+    }
+  } catch {
+    /* storage unavailable */
+  }
+  return [WELCOME];
+}
+
+function loadStoredNext(): AssistantNextResponse | null {
+  try {
+    const raw = localStorage.getItem(NEXT_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (
+      parsed &&
+      typeof parsed.briefing === "string" &&
+      Array.isArray(parsed.actions)
+    ) {
+      return parsed as AssistantNextResponse;
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+function loadDraft(): string {
+  try {
+    return localStorage.getItem(DRAFT_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
 export function AssistantPage({
   status,
   onOpenSettings,
@@ -25,16 +92,13 @@ export function AssistantPage({
   onOpenGuide: (target: AssistantGuideTarget) => void;
   notify: (message: string, tone?: "ok" | "error") => void;
 }) {
-  const [next, setNext] = useState<AssistantNextResponse | null>(null);
+  const [next, setNext] = useState<AssistantNextResponse | null>(
+    loadStoredNext
+  );
   const [loadingNext, setLoadingNext] = useState(false);
-  const [messages, setMessages] = useState<AssistantMessage[]>([
-    {
-      role: "assistant",
-      content:
-        "我是影境手札的参谋。可以问“下一步做什么”“本章有哪些易错过”“真结局还差什么”。回答只基于本地攻略库和你的当前进度。",
-    },
-  ]);
-  const [input, setInput] = useState("");
+  const [messages, setMessages] =
+    useState<AssistantMessage[]>(loadMessages);
+  const [input, setInput] = useState(loadDraft);
   const [streaming, setStreaming] = useState(false);
   const chatRef = useRef<HTMLDivElement | null>(null);
 
@@ -43,6 +107,57 @@ export function AssistantPage({
       chatRef.current.scrollTop = chatRef.current.scrollHeight;
     }
   }, [messages, streaming]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      try {
+        localStorage.setItem(
+          CHAT_KEY,
+          JSON.stringify(messages.slice(-MAX_MESSAGES))
+        );
+      } catch {
+        /* storage unavailable */
+      }
+    }, 220);
+    return () => window.clearTimeout(timer);
+  }, [messages]);
+
+  useEffect(() => {
+    try {
+      if (next) localStorage.setItem(NEXT_KEY, JSON.stringify(next));
+      else localStorage.removeItem(NEXT_KEY);
+    } catch {
+      /* storage unavailable */
+    }
+  }, [next]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      try {
+        if (input) localStorage.setItem(DRAFT_KEY, input);
+        else localStorage.removeItem(DRAFT_KEY);
+      } catch {
+        /* storage unavailable */
+      }
+    }, 220);
+    return () => window.clearTimeout(timer);
+  }, [input]);
+
+  function clearChat() {
+    if (streaming) return;
+    if (!window.confirm("清空本机保存的对话、建议和未发送草稿？")) return;
+    setMessages([WELCOME]);
+    setNext(null);
+    setInput("");
+    try {
+      localStorage.removeItem(CHAT_KEY);
+      localStorage.removeItem(NEXT_KEY);
+      localStorage.removeItem(DRAFT_KEY);
+    } catch {
+      /* ignore */
+    }
+    notify("对话已清空", "ok");
+  }
 
   async function loadNext() {
     setLoadingNext(true);
@@ -230,11 +345,23 @@ export function AssistantPage({
         <section className="paper-block assistant-chat">
           <div className="block-head">
             <h2>问参谋</h2>
-            {status ? (
-              <span className={status.configured ? "mark" : "mark danger"}>
-                {status.configured ? status.model : "未配置"}
-              </span>
-            ) : null}
+            <div className="block-tools">
+              {messages.length > 1 ? (
+                <button
+                  className="text-action"
+                  onClick={clearChat}
+                  disabled={streaming}
+                  type="button"
+                >
+                  清空对话
+                </button>
+              ) : null}
+              {status ? (
+                <span className={status.configured ? "mark" : "mark danger"}>
+                  {status.configured ? status.model : "未配置"}
+                </span>
+              ) : null}
+            </div>
           </div>
 
           {!status?.configured ? (
@@ -249,6 +376,9 @@ export function AssistantPage({
             </div>
           ) : (
             <>
+              <p className="quiet tiny chat-storage-note">
+                对话与未发送草稿保存在本机浏览器；可点上方“清空对话”。
+              </p>
               <div className="chat-log" ref={chatRef}>
                 {messages.map((message, index) => (
                   <div

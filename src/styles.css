@@ -2540,3 +2540,18 @@ select:focus,
     box-shadow: 0 0 0 1px rgba(166, 59, 44, 0.25);
   }
 }
+
+.block-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.chat-storage-note {
+  margin: -4px 0 10px;
+}
+
+.block-tools .text-action:disabled {
+  opacity: 0.45;
+  cursor: default;
+}

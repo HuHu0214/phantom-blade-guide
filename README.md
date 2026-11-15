@@ -70,9 +70,10 @@ node dist-server/server.js
 
 - **一键下一步**：根据当前进度生成 3-5 条行动建议，带理由、地点和截止点
 - **聊天**：问当前首领、支线、易错过内容、真结局；回答只使用本地攻略库和进度
+- **对话保留**：聊天、当前建议和未发送草稿保存在本机浏览器，切到攻略再回来、刷新页面都不会丢；可在助手页点「清空对话」重置
 - **无 Key 时**：一键下一步仍使用本地规则，聊天不可用
 
-实现方式是 Vercel AI SDK 7 在 Node 服务端调用 DeepSeek；只读，不会执行命令或修改文件。Key 经 Windows 账户级加密保存为 `data/assistant-key.enc`，不会进入浏览器或 Git。聊天时只发送当前进度摘要、当前区域和相关攻略片段，不发送 NPSSO、PSN 账号信息、地图截图或完整进度文件。默认模型 `deepseek-chat`，也可切换 `deepseek-reasoner`。
+实现方式是 Vercel AI SDK 7 在 Node 服务端调用 DeepSeek；只读，不会执行命令或修改文件。Key 经 Windows 账户级加密保存为 `data/assistant-key.enc`，不会进入浏览器或 Git。聊天时只发送当前进度摘要、当前区域和相关攻略片段，不发送 NPSSO、PSN 账号信息、地图截图或完整进度文件。对话、当前建议和草稿只保存在本机浏览器 localStorage（最多保留 40 条消息），不会写到服务端文件。默认模型 `deepseek-chat`，也可切换 `deepseek-reasoner`。
 
 ## 数据与素材
 

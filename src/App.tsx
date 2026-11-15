@@ -479,16 +479,6 @@ export default function App() {
         {tab === "trophies" && (
           <TrophiesPage guide={guide} progress={progress} onToggle={toggle} />
         )}
-        {tab === "assistant" && (
-          <AssistantPage
-            status={assistantStatus}
-            onOpenSettings={() => goTab("settings")}
-            onOpenGuide={(target) =>
-              openGuide(target.regionId, target.section, target)
-            }
-            notify={notify}
-          />
-        )}
         {tab === "settings" && (
           <SettingsPage
             guide={guide}
@@ -506,6 +496,16 @@ export default function App() {
             onClearAssistant={clearAssistant}
           />
         )}
+        <div hidden={tab !== "assistant"}>
+          <AssistantPage
+            status={assistantStatus}
+            onOpenSettings={() => goTab("settings")}
+            onOpenGuide={(target) =>
+              openGuide(target.regionId, target.section, target)
+            }
+            notify={notify}
+          />
+        </div>
       </Shell>
       <Toast toast={toast} />
       <Lightbox state={lightbox} onClose={() => setLightbox(null)} />
